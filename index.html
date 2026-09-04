@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PROJECT: MOLECULES</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        body {
+            margin: 0; padding: 0;
+            background-color: #1a1a1a;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+            font-family: 'VT323', monospace;
+            color: white;
+            user-select: none;
+        }
+
+        #game-wrapper {
+            position: relative;
+            width: 512px; 
+            height: 288px;
+            transform-origin: center center;
+            background-color: #000;
+        }
+
+        canvas {
+            position: absolute; top: 0; left: 0;
+            width: 512px; height: 288px;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        #visual-layer, #visual-btn-layer, #feedback-layer {
+            position: absolute; top: 0; left: 0;
+            width: 512px; height: 288px;
+            pointer-events: none;
+        }
+
+        .visual-img {
+            position: absolute;
+            image-rendering: pixelated;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+        }
+
+        #visual-layer .visual-img {
+            top: 0; left: 0;
+            width: 512px; height: 288px;
+        }
+
+        #hitbox-layer, #popup-layer {
+            position: absolute; top: 0; left: 0;
+            width: 512px; height: 288px;
+        }
+
+        #popup-layer {
+            display: none;
+            z-index: 100;
+        }
+
+        #black-screen {
+            position: absolute; top: 0; left: 0;
+            width: 512px; height: 288px;
+            background-color: black;
+            opacity: 1; 
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 200;
+        }
+
+        /* Teks Timer & Result */
+        .ui-text {
+            position: absolute;
+            font-size: 26px;
+            line-height: 32px;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        /* Animasi Transisi */
+        .fade-in { animation: fadeIn 0.2s forwards; }
+        .fade-out { animation: fadeOut 0.2s forwards; }
+        .pop-in { animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .pop-in-slow { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        @keyframes popIn { 
+            0% { transform: scale(0.5); opacity: 0; } 
+            100% { transform: scale(1); opacity: 1; } 
+        }
+
+        .fallback-div {
+            display: flex; justify-content: center; align-items: center;
+            font-size: 14px; border: 1px solid #444; box-sizing: border-box; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <canvas id="game-canvas" width="512" height="288"></canvas>
+        <div id="visual-layer"></div>
+        <div id="visual-btn-layer"></div>
+        <div id="feedback-layer"></div> 
+        <div id="hitbox-layer"></div>
+        <div id="popup-layer"></div>
+        
+        <div id="black-screen"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('game-wrapper');
+        const visualLayer = document.getElementById('visual-layer');
+        const visualBtnLayer = document.getElementById('visual-btn-layer');
+        const feedbackLayer = document.getElementById('feedback-layer');
+        const popupLayer = document.getElementById('popup-layer');
+        const blackScreen = document.getElementById('black-screen');
+
+        const TILE_SIZE = 32;
+        const GAME_WIDTH = 512;
+        const GAME_HEIGHT = 288;
+
+        function resizeGame() {
+            const scale = Math.min(window.innerWidth / GAME_WIDTH, window.innerHeight / GAME_HEIGHT);
+            wrapper.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', resizeGame);
+        resizeGame();
+
+        // State Machine
+        let gameState = 'titlescreen'; 
+        let slideIndex = 0;
+        const slideSequence = ['a', 'b', 'c', 'd', 'e', 'f'];
+        
+        let isPopupActive = false;
+        let slideTimer = null;
+        let lastActionTime = 0;
+
+        // Data Kuis
+        const quizDatabase = [
+            { id: 1, name: 'mrqhh.png', x: 'mrans2.png', y: 'mrans1.png', z: 'mrans3.png' },
+            { id: 2, name: 'mrqchhhh.png', x: 'mrans16.png', y: 'mrans10.png', z: 'mrans13.png' },
+            { id: 3, name: 'mrqnhhh.png', x: 'mrans17.png', y: 'mrans10.png', z: 'mrans15.png' },
+            { id: 4, name: 'mrqhho.png', x: 'mrans18.png', y: 'mrans16.png', z: 'mrans17.png' },
+            { id: 5, name: 'mrqhf.png', x: 'mrans20.png', y: 'mrans10.png', z: 'mrans30.png' },
+            { id: 6, name: 'mrqnacl.png', x: 'mrans58a.png', y: 'mrans23.png', z: 'mrans35a.png' },
+            { id: 7, name: 'mrqnaoh.png', x: 'mrans40.png', y: 'mrans30.png', z: 'mrans20.png' },
+            { id: 8, name: 'mrqhcl.png', x: 'mrans36a.png', y: 'mrans35a.png', z: 'mrans37a.png' },
+            { id: 9, name: 'mrqoo.png', x: 'mrans32.png', y: 'mrans16.png', z: 'mrans24.png' },
+            { id: 10, name: 'mrqcoo.png', x: 'mrans44.png', y: 'mrans28.png', z: 'mrans16.png' },
+            { id: 11, name: 'mrqchhhoh.png', x: 'mrans32.png', y: 'mrans29.png', z: 'mrans34.png' },
+            { id: 12, name: 'mrqhhs.png', x: 'mrans34.png', y: 'mrans32.png', z: 'mrans17.png' },
+            { id: 13, name: 'mrqsoo.png', x: 'mrans64.png', y: 'mrans32.png', z: 'mrans48.png' },
+            { id: 14, name: 'mrqnoo.png', x: 'mrans46.png', y: 'mrans36.png', z: 'mrans30.png' },
+            { id: 15, name: 'mrqhcn.png', x: 'mrans27.png', y: 'mrans26.png', z: 'mrans28.png' }
+        ];
+
+        // State Kuis
+        let currentQuizQuestions = [];
+        let currentQIndex = 0;
+        let score = 0;
+        let correctCount = 0;
+        let wrongCount = 0;
+        let isAnswering = false;
+        let activeSlots = {}; 
+
+        let timerSeconds = 300; 
+        let timerInterval = null;
+        let timerElement = null;
+        let popupType = null; 
+
+        const assets = {};
+        const imageList = [
+            'titlescreen.png', 'kanvasmr.png', 'mrmenu.png',
+            'mrinacla.png', 'mrinaclb.png', 'mrinaclc.png', 'mrinacld.png', 'mrinacle.png', 'mrinaclf.png', 'mrinaclg.png',
+            'mrkeyilus.png', 'mrkeyilusb.png', 'mrkeyplay.png', 'mrpopupexit.png',
+            'mrqstart.png', 'mrq1.png', 'mrq12.png', 'mrq123.png', 'mrqquestion.png', 'mrqresult.png',
+            'mrkeyinfo.png', 'popupinfomr.png', 'mrkeytrue.png', 'mrkeyfalse.png'
+        ];
+        
+        quizDatabase.forEach(q => {
+            imageList.push(q.name, q.x, q.y, q.z);
+        });
+        
+        let loadedCount = 0;
+
+        function preloadAssets() {
+            imageList.forEach(filename => {
+                const img = new Image();
+                img.src = filename;
+                img.onload = () => { assets[filename] = img; checkLoad(); };
+                img.onerror = () => { assets[filename] = null; checkLoad(); };
+            });
+        }
+
+        function checkLoad() {
+            loadedCount++;
+            if (loadedCount === imageList.length) setTimeout(startGameEngine, 300);
+        }
+
+        function parseTile(tile) {
+            const cols = "abcdefghijklmnop";
+            return { 
+                x: cols.indexOf(tile.charAt(0).toLowerCase()) * TILE_SIZE, 
+                y: (parseInt(tile.substring(1)) - 1) * TILE_SIZE 
+            };
+        }
+
+        function isClickInHitbox(x, y, startTile, endTile) {
+            const start = parseTile(startTile);
+            const end = parseTile(endTile);
+            return (x >= start.x && x <= start.x + (end.x - start.x) + TILE_SIZE && 
+                    y >= start.y && y <= start.y + (end.y - start.y) + TILE_SIZE);
+        }
+
+        function addVisual(id, filename, container, animClass = 'fade-in', style = '') {
+            const div = document.createElement('div');
+            div.id = id; div.className = `visual-img ${animClass}`; div.style.cssText = style;
+            if(assets[filename]) {
+                div.style.backgroundImage = `url('${assets[filename].src}')`;
+            } else {
+                div.classList.add('fallback-div'); div.innerHTML = `[${filename}]`;
+                div.style.backgroundColor = 'rgba(100, 100, 100, 0.9)';
+            }
+            container.appendChild(div);
+            return div;
+        }
+
+        function removeVisual(id, animClass = 'fade-out', delay = 200) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.remove('fade-in', 'pop-in', 'pop-in-slow');
+                el.classList.add(animClass);
+                setTimeout(() => el.remove(), delay);
+            }
+        }
+
+        function addText(id, text, startTile, endTile, color) {
+            const start = parseTile(startTile);
+            const end = parseTile(endTile);
+            const w = (end.x - start.x) + TILE_SIZE;
+            const div = document.createElement('div');
+            div.id = id; div.className = 'ui-text fade-in';
+            div.style.cssText = `left:${start.x}px; top:${start.y}px; width:${w}px; color:${color};`;
+            div.innerText = text;
+            visualBtnLayer.appendChild(div);
+            return div;
+        }
+
+        // ==========================================
+        // SISTEM KUIS
+        // ==========================================
+        function initQuizData() {
+            let fixed = quizDatabase.slice(0, 5);
+            let pool = quizDatabase.slice(5).sort(() => Math.random() - 0.5).slice(0, 5);
+            currentQuizQuestions = fixed.concat(pool);
+            currentQIndex = 0; score = 0; correctCount = 0; wrongCount = 0;
+            timerSeconds = 300;
+        }
+
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function startTimer() {
+            timerElement = addText('quiz-timer', formatTime(timerSeconds), 'l1', 'n1', '#fff');
+            timerInterval = setInterval(() => {
+                if (isPopupActive) return; 
+                if (timerSeconds > 0) {
+                    timerSeconds--;
+                    timerElement.innerText = formatTime(timerSeconds);
+                } else {
+                    clearInterval(timerInterval);
+                    setTimeout(() => transitionState('quiz_result', 200), 3000); 
+                }
+            }, 1000);
+        }
+
+        function loadQuestion() {
+            visualLayer.innerHTML = ''; visualBtnLayer.innerHTML = ''; feedbackLayer.innerHTML = '';
+            addVisual('q-base', 'mrqquestion.png', visualLayer);
+            
+            const q = currentQuizQuestions[currentQIndex];
+            addVisual('q-senyawa', q.name, visualLayer);
+
+            const boxInfo = parseTile('o1');
+            addVisual('btn-info', 'mrkeyinfo.png', visualBtnLayer, 'fade-in', `left:${boxInfo.x}px; top:${boxInfo.y}px; width:32px; height:32px;`);
+            
+            timerElement = addText('quiz-timer', formatTime(timerSeconds), 'l1', 'n1', '#fff');
+
+            let options = [
+                { type: 'x', img: q.x }, 
+                { type: 'y', img: q.y }, 
+                { type: 'z', img: q.z }
+            ].sort(() => Math.random() - 0.5);
+
+            const slots = [
+                { id: 'A', tile: 'b7', w: 128 }, 
+                { id: 'B', tile: 'g7', w: 128 }, 
+                { id: 'C', tile: 'l7', w: 128 }
+            ];
+
+            activeSlots = {};
+            options.forEach((opt, idx) => {
+                const s = slots[idx];
+                const box = parseTile(s.tile);
+                activeSlots[s.id] = { type: opt.type, tile: s.tile };
+                addVisual(`ans-${s.id}`, opt.img, visualBtnLayer, 'fade-in', `left:${box.x}px; top:${box.y}px; width:${s.w}px; height:32px;`);
+            });
+
+            isAnswering = false;
+        }
+
+        function evaluateAnswer(selectedSlotID) {
+            if (isAnswering || timerSeconds <= 0) return;
+            isAnswering = true;
+
+            const selected = activeSlots[selectedSlotID];
+            const correctSlotID = Object.keys(activeSlots).find(key => activeSlots[key].type === 'x');
+
+            if (selected.type === 'x') {
+                correctCount++;
+                score += 10;
+                const b = parseTile(selected.tile);
+                addVisual(`fb-${selectedSlotID}`, 'mrkeytrue.png', feedbackLayer, 'pop-in', `left:${b.x}px; top:${b.y}px; width:128px; height:32px;`);
+            } else {
+                wrongCount++;
+                const bWrong = parseTile(selected.tile);
+                addVisual(`fb-${selectedSlotID}`, 'mrkeyfalse.png', feedbackLayer, 'pop-in', `left:${bWrong.x}px; top:${bWrong.y}px; width:128px; height:32px;`);
+                
+                const bRight = parseTile(activeSlots[correctSlotID].tile);
+                addVisual(`fb-correct`, 'mrkeytrue.png', feedbackLayer, 'pop-in', `left:${bRight.x}px; top:${bRight.y}px; width:128px; height:32px;`);
+            }
+
+            // Perbaikan logika transisi antar soal
+            setTimeout(() => {
+                currentQIndex++;
+                if (currentQIndex < 10) {
+                    // Transisi minor: Fade out 200ms pada elemen layer kuis tanpa trigger black-screen
+                    const layers = [visualLayer, visualBtnLayer, feedbackLayer];
+                    layers.forEach(layer => {
+                        Array.from(layer.children).forEach(el => {
+                            el.classList.remove('fade-in', 'pop-in');
+                            el.classList.add('fade-out');
+                        });
+                    });
+
+                    // Muat soal baru setelah fade-out selesai
+                    setTimeout(() => {
+                        loadQuestion();
+                    }, 200);
+                } else {
+                    clearInterval(timerInterval);
+                    transitionState('quiz_result', 200); // Layar akhir tetap butuh fade black
+                }
+            }, 1000); // Jeda 1 detik menampilkan tanda benar/salah
+        }
+
+        // ==========================================
+        // ALUR LOGIKA UTAMA
+        // ==========================================
+        function drawBaseCanvas(filename) {
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            if (assets[filename]) {
+                ctx.drawImage(assets[filename], 0, 0, GAME_WIDTH, GAME_HEIGHT);
+            }
+        }
+
+        // Fungsi ini khusus untuk transisi mayor (pergantian mode yang membutuhkan layar hitam sekejap)
+        function transitionState(newState, delay = 300) {
+            blackScreen.style.opacity = 1;
+            setTimeout(() => {
+                visualLayer.innerHTML = '';
+                visualBtnLayer.innerHTML = '';
+                feedbackLayer.innerHTML = '';
+                gameState = newState;
+                setupState(newState);
+                blackScreen.style.opacity = 0;
+            }, delay);
+        }
+
+        function setupState(state) {
+            clearTimeout(slideTimer);
+
+            if (state === 'titlescreen') drawBaseCanvas('titlescreen.png');
+            else if (state === 'menu') {
+                drawBaseCanvas('kanvasmr.png');
+                addVisual('v-menu', 'mrmenu.png', visualLayer);
+            }
+            else if (state.startsWith('slide_')) {
+                drawBaseCanvas('kanvasmr.png');
+                const sl = state.split('_')[1];
+                if (sl === 'g') {
+                    addVisual(`v-slide-g`, `mrinaclg.png`, visualLayer);
+                    const box = parseTile('b8');
+                    addVisual('btn-back', 'mrkeyilusb.png', visualBtnLayer, 'pop-in', `left:${box.x}px; top:${box.y}px; width:128px; height:32px;`);
+                } else {
+                    addVisual(`v-slide-${sl}`, `mrinacl${sl}.png`, visualLayer);
+                    if (sl === 'f') {
+                        const boxIlus = parseTile('b8');
+                        const boxKuis = parseTile('f8');
+                        addVisual('btn-ilus', 'mrkeyilus.png', visualBtnLayer, 'pop-in', `left:${boxIlus.x}px; top:${boxIlus.y}px; width:128px; height:32px;`);
+                        addVisual('btn-kuis', 'mrkeyplay.png', visualBtnLayer, 'pop-in', `left:${boxKuis.x}px; top:${boxKuis.y}px; width:128px; height:32px;`);
+                    }
+                    if (sl !== 'f') slideTimer = setTimeout(nextSlide, sl === 'a' ? 10000 : 5000);
+                }
+            }
+            else if (state === 'quiz_start') {
+                drawBaseCanvas('kanvasmr.png');
+                addVisual('q-start', 'mrqstart.png', visualLayer);
+            }
+            else if (state.startsWith('quiz_cd_')) {
+                const step = state.split('_')[2]; 
+                drawBaseCanvas('kanvasmr.png');
+                addVisual('q-cd', `mrq${step}.png`, visualLayer, 'pop-in-slow');
+                slideTimer = setTimeout(() => {
+                    if (step === '1') transitionState('quiz_cd_12', 0);
+                    else if (step === '12') transitionState('quiz_cd_123', 0);
+                    else if (step === '123') {
+                        initQuizData();
+                        startTimer();
+                        transitionState('quiz_playing', 0);
+                    }
+                }, 1000);
+            }
+            else if (state === 'quiz_playing') {
+                drawBaseCanvas('kanvasmr.png');
+                loadQuestion();
+            }
+            else if (state === 'quiz_result') {
+                drawBaseCanvas('kanvasmr.png');
+                addVisual('q-res', 'mrqresult.png', visualLayer);
+                
+                addText('res-benar', correctCount.toString(), 'i4', 'j4', 'lightgreen');
+                addText('res-salah', wrongCount.toString(), 'i5', 'j5', 'lightcoral');
+                addText('res-skor', score.toString(), 'i6', 'j6', 'lightblue');
+            }
+        }
+
+        // Fungsi ini khusus untuk transisi minor (antar slide) tanpa layar hitam
+        function nextSlide() {
+            if (Date.now() - lastActionTime < 1000) return; 
+            lastActionTime = Date.now();
+            clearTimeout(slideTimer);
+            if (slideIndex < slideSequence.length - 1) {
+                const oldSl = slideSequence[slideIndex];
+                slideIndex++;
+                const newSl = slideSequence[slideIndex];
+                
+                removeVisual(`v-slide-${oldSl}`);
+                gameState = `slide_${newSl}`;
+                setupState(gameState);
+            }
+        }
+
+        // ==========================================
+        // POPUP LOGIC (INFO & EXIT)
+        // ==========================================
+        function openPopup(type) {
+            if (gameState === 'titlescreen' || gameState === 'quiz_result') return;
+            isPopupActive = true;
+            popupType = type;
+            clearTimeout(slideTimer);
+            popupLayer.style.display = 'block';
+            popupLayer.innerHTML = '';
+            
+            const div = document.createElement('div');
+            div.style.cssText = "position:absolute; top:0; left:0; width:512px; height:288px; display:flex; justify-content:center; align-items:center;";
+            
+            if (type === 'info') {
+                div.innerHTML = assets['popupinfomr.png'] ? 
+                    `<img src="${assets['popupinfomr.png'].src}" class="pop-in" style="width:100%; height:100%; image-rendering:pixelated; object-fit:contain; position:absolute;">` : 
+                    `<div class="pop-in" style="width:512px; height:288px; background:rgba(0,0,0,0.9);"><p style="text-align:center; margin-top:100px;">[popupinfomr.png]<br>Tutup (p1/ESC)</p></div>`;
+            } else if (type === 'exit') {
+                div.style.background = 'rgba(0,0,0,0.7)';
+                div.innerHTML = assets['mrpopupexit.png'] ? 
+                    `<img src="${assets['mrpopupexit.png'].src}" style="width:100%; height:100%; image-rendering:pixelated; object-fit:contain; position:absolute;">` : 
+                    `<div style="width:512px; height:288px; background:rgba(0,0,0,0.8); position:relative;">
+                        <p style="text-align:center; margin-top:100px;">[mrpopupexit.png]</p>
+                        <div style="position:absolute; left:${parseTile('e6').x}px; top:${parseTile('e6').y}px; width:96px; height:32px; background:#4CAF50; line-height:32px; text-align:center;">IYA</div>
+                        <div style="position:absolute; left:${parseTile('j6').x}px; top:${parseTile('j6').y}px; width:96px; height:32px; background:#f44336; line-height:32px; text-align:center;">TIDAK</div>
+                    </div>`;
+            }
+            popupLayer.appendChild(div);
+        }
+
+        function closePopup(action) {
+            isPopupActive = false;
+            if (popupType === 'info') {
+                popupLayer.classList.add('fade-out'); 
+                setTimeout(() => {
+                    popupLayer.style.display = 'none';
+                    popupLayer.classList.remove('fade-out');
+                    popupLayer.innerHTML = '';
+                }, 200);
+            } else {
+                popupLayer.style.display = 'none';
+                popupLayer.innerHTML = '';
+            }
+
+            if (action === 'iya') {
+                clearInterval(timerInterval);
+                transitionState('titlescreen', 300);
+            } else if (action === 'tidak' || popupType === 'info') {
+                if (gameState.startsWith('slide_') && gameState !== 'slide_f' && gameState !== 'slide_g') {
+                    slideTimer = setTimeout(nextSlide, (gameState === 'slide_a') ? 10000 : 5000);
+                }
+            }
+        }
+
+        // ==========================================
+        // INPUT HANDLING
+        // ==========================================
+        function handleInteraction(x, y, actionType) {
+            const rect = wrapper.getBoundingClientRect();
+            const scale = rect.width / GAME_WIDTH;
+            const intX = (x - rect.left) / scale;
+            const intY = (y - rect.top) / scale;
+
+            if (isPopupActive) {
+                if (popupType === 'exit') {
+                    if (isClickInHitbox(intX, intY, 'e6', 'g6') || actionType === 'iya') closePopup('iya');
+                    else if (isClickInHitbox(intX, intY, 'j6', 'l6') || actionType === 'tidak') closePopup('tidak');
+                } else if (popupType === 'info') {
+                    if (isClickInHitbox(intX, intY, 'p1', 'p1') || actionType === 'tidak') closePopup('tidak');
+                }
+                return;
+            }
+
+            if (isClickInHitbox(intX, intY, 'p1', 'p1') && gameState !== 'titlescreen' && gameState !== 'quiz_result') {
+                openPopup('exit');
+                return;
+            }
+
+            if (gameState === 'titlescreen') {
+                if (isClickInHitbox(intX, intY, 'g6', 'j7') || actionType === 'next') transitionState('menu', 300);
+            } 
+            else if (gameState === 'menu') {
+                if (isClickInHitbox(intX, intY, 'd7', 'g7')) { slideIndex = 0; transitionState('slide_a', 200); }
+                if (isClickInHitbox(intX, intY, 'j7', 'm7')) transitionState('quiz_start', 200);
+            }
+            else if (gameState.startsWith('slide_')) {
+                const sl = gameState.split('_')[1];
+                if (intY < 32 && actionType === 'click') return; 
+
+                if (sl === 'f') {
+                    // Transisi minor slide f ke g
+                    if (isClickInHitbox(intX, intY, 'b8', 'e8') || actionType === 'ilustrasi') {
+                        removeVisual('btn-ilus'); removeVisual('btn-kuis'); removeVisual('v-slide-f');
+                        gameState = 'slide_g';
+                        setupState(gameState);
+                    }
+                    // Transisi mayor ke kuis
+                    else if (isClickInHitbox(intX, intY, 'f8', 'i8') || actionType === 'kuis') transitionState('quiz_start', 200);
+                } 
+                else if (sl === 'g') {
+                    // Transisi minor slide g kembali ke f
+                    if (isClickInHitbox(intX, intY, 'b8', 'e8') || actionType === 'next') {
+                        removeVisual('btn-back'); removeVisual('v-slide-g');
+                        gameState = 'slide_f';
+                        setupState(gameState);
+                    }
+                } 
+                else {
+                    if (actionType === 'click' || actionType === 'next') nextSlide();
+                }
+            }
+            else if (gameState === 'quiz_start') {
+                if (isClickInHitbox(intX, intY, 'h7', 'i7') || actionType === 'next') transitionState('quiz_cd_1', 0);
+            }
+            else if (gameState === 'quiz_playing') {
+                if (isClickInHitbox(intX, intY, 'o1', 'o1')) openPopup('info');
+                else if (isClickInHitbox(intX, intY, 'b7', 'e7') || actionType === 'a') evaluateAnswer('A');
+                else if (isClickInHitbox(intX, intY, 'g7', 'j7') || actionType === 'b') evaluateAnswer('B');
+                else if (isClickInHitbox(intX, intY, 'l7', 'o7') || actionType === 'c') evaluateAnswer('C');
+            }
+            else if (gameState === 'quiz_result') {
+                if (isClickInHitbox(intX, intY, 'h8', 'i8') || actionType === 'next') {
+                    transitionState('titlescreen', 300);
+                }
+            }
+        }
+
+        // ==========================================
+        // LISTENERS & BOOT
+        // ==========================================
+        wrapper.addEventListener('mousedown', (e) => handleInteraction(e.clientX, e.clientY, 'click'));
+        wrapper.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInteraction(e.touches[0].clientX, e.touches[0].clientY, 'click');
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.code;
+            const keyChar = e.key.toLowerCase();
+            
+            if (key === 'Escape') {
+                if (isPopupActive) closePopup('tidak');
+                else if (gameState !== 'titlescreen' && gameState !== 'quiz_result') openPopup('exit');
+                return;
+            }
+
+            if (isPopupActive) {
+                if (key === 'Enter' || key === 'Space') handleInteraction(0,0, popupType === 'exit' ? 'iya' : 'tidak');
+                return;
+            }
+
+            if (key === 'Enter' || key === 'Space') {
+                e.preventDefault();
+                if (gameState === 'titlescreen' || gameState === 'slide_g' || gameState === 'quiz_start' || gameState === 'quiz_result' || 
+                   (gameState.startsWith('slide_') && gameState !== 'slide_f' && gameState !== 'slide_g')) {
+                    handleInteraction(0, 0, 'next');
+                } else if (gameState === 'slide_f') {
+                    handleInteraction(0, 0, 'kuis');
+                }
+            }
+            
+            if (gameState === 'slide_f') {
+                if (keyChar === 'a') handleInteraction(0, 0, 'ilustrasi');
+                if (keyChar === 'b') handleInteraction(0, 0, 'kuis');
+            }
+            
+            if (gameState === 'quiz_playing') {
+                if (keyChar === 'a') handleInteraction(0, 0, 'a');
+                if (keyChar === 'b') handleInteraction(0, 0, 'b');
+                if (keyChar === 'c') handleInteraction(0, 0, 'c');
+            }
+        });
+
+        function startGameEngine() {
+            blackScreen.style.opacity = 0;
+            setupState('titlescreen');
+        }
+
+        preloadAssets();
+
+    </script>
+</body>
+</html>
