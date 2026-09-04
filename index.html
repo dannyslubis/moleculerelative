@@ -342,11 +342,9 @@
                 addVisual(`fb-correct`, 'mrkeytrue.png', feedbackLayer, 'pop-in', `left:${bRight.x}px; top:${bRight.y}px; width:128px; height:32px;`);
             }
 
-            // Perbaikan logika transisi antar soal
             setTimeout(() => {
                 currentQIndex++;
                 if (currentQIndex < 10) {
-                    // Transisi minor: Fade out 200ms pada elemen layer kuis tanpa trigger black-screen
                     const layers = [visualLayer, visualBtnLayer, feedbackLayer];
                     layers.forEach(layer => {
                         Array.from(layer.children).forEach(el => {
@@ -355,15 +353,14 @@
                         });
                     });
 
-                    // Muat soal baru setelah fade-out selesai
                     setTimeout(() => {
                         loadQuestion();
                     }, 200);
                 } else {
                     clearInterval(timerInterval);
-                    transitionState('quiz_result', 200); // Layar akhir tetap butuh fade black
+                    transitionState('quiz_result', 200); 
                 }
-            }, 1000); // Jeda 1 detik menampilkan tanda benar/salah
+            }, 1000); 
         }
 
         // ==========================================
@@ -376,7 +373,6 @@
             }
         }
 
-        // Fungsi ini khusus untuk transisi mayor (pergantian mode yang membutuhkan layar hitam sekejap)
         function transitionState(newState, delay = 300) {
             blackScreen.style.opacity = 1;
             setTimeout(() => {
@@ -447,7 +443,6 @@
             }
         }
 
-        // Fungsi ini khusus untuk transisi minor (antar slide) tanpa layar hitam
         function nextSlide() {
             if (Date.now() - lastActionTime < 1000) return; 
             lastActionTime = Date.now();
@@ -467,7 +462,9 @@
         // POPUP LOGIC (INFO & EXIT)
         // ==========================================
         function openPopup(type) {
-            if (gameState === 'titlescreen' || gameState === 'quiz_result') return;
+            // Perbaikan: Hanya diblokir di titlescreen agar bisa diakses di result
+            if (gameState === 'titlescreen') return;
+            
             isPopupActive = true;
             popupType = type;
             clearTimeout(slideTimer);
@@ -537,7 +534,8 @@
                 return;
             }
 
-            if (isClickInHitbox(intX, intY, 'p1', 'p1') && gameState !== 'titlescreen' && gameState !== 'quiz_result') {
+            // Perbaikan: Hanya diblokir di titlescreen
+            if (isClickInHitbox(intX, intY, 'p1', 'p1') && gameState !== 'titlescreen') {
                 openPopup('exit');
                 return;
             }
@@ -554,17 +552,14 @@
                 if (intY < 32 && actionType === 'click') return; 
 
                 if (sl === 'f') {
-                    // Transisi minor slide f ke g
                     if (isClickInHitbox(intX, intY, 'b8', 'e8') || actionType === 'ilustrasi') {
                         removeVisual('btn-ilus'); removeVisual('btn-kuis'); removeVisual('v-slide-f');
                         gameState = 'slide_g';
                         setupState(gameState);
                     }
-                    // Transisi mayor ke kuis
                     else if (isClickInHitbox(intX, intY, 'f8', 'i8') || actionType === 'kuis') transitionState('quiz_start', 200);
                 } 
                 else if (sl === 'g') {
-                    // Transisi minor slide g kembali ke f
                     if (isClickInHitbox(intX, intY, 'b8', 'e8') || actionType === 'next') {
                         removeVisual('btn-back'); removeVisual('v-slide-g');
                         gameState = 'slide_f';
@@ -585,6 +580,7 @@
                 else if (isClickInHitbox(intX, intY, 'l7', 'o7') || actionType === 'c') evaluateAnswer('C');
             }
             else if (gameState === 'quiz_result') {
+                // Tombol akhiri khusus di layar hasil tanpa popup
                 if (isClickInHitbox(intX, intY, 'h8', 'i8') || actionType === 'next') {
                     transitionState('titlescreen', 300);
                 }
@@ -604,9 +600,10 @@
             const key = e.code;
             const keyChar = e.key.toLowerCase();
             
+            // Perbaikan tombol Escape agar tidak memblokir quiz_result
             if (key === 'Escape') {
                 if (isPopupActive) closePopup('tidak');
-                else if (gameState !== 'titlescreen' && gameState !== 'quiz_result') openPopup('exit');
+                else if (gameState !== 'titlescreen') openPopup('exit');
                 return;
             }
 
